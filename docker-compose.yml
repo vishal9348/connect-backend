@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # --------------- Infrastructure Services ---------------
   eureka-server:
@@ -14,10 +12,14 @@ services:
       - EUREKA_CLIENT_REGISTER-WITH-EUREKA=false
       - EUREKA_CLIENT_FETCH-REGISTRY=false
       - JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ./eureka-server/target:/app
+    working_dir: /app
+    command: java -jar /app/eureka-server-0.0.1-SNAPSHOT.jar  # Exact match
     networks:
       - twitter-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8761/actuator/health" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -34,6 +36,10 @@ services:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
       - SPRING_CLOUD_GATEWAY_DISCOVERY_LOCATOR_ENABLED=true
       - JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ./api-gateway/target:/app
+    working_dir: /app
+    command: sh -c "java -jar /app/$(ls /app | grep '.jar$')"
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -94,6 +100,7 @@ services:
       - POSTGRES_DB=feed_db
     volumes:
       - postgres-feed-data:/var/lib/postgresql/data
+      - ./init/feed-service/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - twitter-net
     healthcheck:
@@ -112,10 +119,30 @@ services:
       - POSTGRES_DB=notification_db
     volumes:
       - postgres-notification-data:/var/lib/postgresql/data
+      - ./init/notification-service/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - twitter-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-media:
+    image: postgres:15-alpine
+    container_name: postgres-media
+    hostname: postgres-media
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=media_db
+    volumes:
+      - postgres-media-data:/var/lib/postgresql/data
+      - ./init/media-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - twitter-net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d media_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -186,7 +213,7 @@ services:
     volumes:
       - ./user-service/target:/app
     working_dir: /app
-    command: java -jar user-service-*.jar
+    command: sh -c "java -jar /app/$(ls /app | grep '.jar$')"
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -230,7 +257,7 @@ services:
     volumes:
       - ./tweet-service/target:/app
     working_dir: /app
-    command: java -jar tweet-service-*.jar
+    command: sh -c "java -jar /app/$(ls /app | grep '.jar$')"
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -269,6 +296,10 @@ services:
       - SPRING_RABBITMQ_USERNAME=admin
       - SPRING_RABBITMQ_PASSWORD=admin_pass123!
       - JAVA_OPTS=-Xms1g -Xmx1g
+    volumes:
+      - ./feed-service/target:/app
+    working_dir: /app
+    command: sh -c "java -jar /app/$(ls /app | grep '.jar$')"
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -304,6 +335,10 @@ services:
       - SPRING_RABBITMQ_USERNAME=admin
       - SPRING_RABBITMQ_PASSWORD=admin_pass123!
       - JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ./notification-service/target:/app
+    working_dir: /app
+    command: sh -c "java -jar /app/$(ls /app | grep '.jar$')"
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -338,6 +373,10 @@ services:
       - AWS_REGION=us-east-1
       - AWS_S3_BUCKET_NAME=your-bucket-name
       - JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ./media-service/target:/app
+    working_dir: /app
+    command: sh -c "java -jar /app/$(ls /app | grep '.jar$')"
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -363,6 +402,10 @@ services:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
       - SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
       - JAVA_OPTS=-Xms1g -Xmx1g
+    volumes:
+      - ./search-service/target:/app
+    working_dir: /app
+    command: sh -c "java -jar /app/$(ls /app | grep '.jar$')"
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -400,6 +443,7 @@ volumes:
   redis-data:
   rabbitmq-data:
   elasticsearch-data:
+  postgres-media-data:
 
 # --------------- Networks ---------------
 networks:
