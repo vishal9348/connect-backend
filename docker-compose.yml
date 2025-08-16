@@ -1,0 +1,407 @@
+version: '3.8'
+
+services:
+  # --------------- Infrastructure Services ---------------
+  eureka-server:
+    image: openjdk:17-jdk-slim
+    container_name: eureka-server
+    hostname: eureka-server
+    ports:
+      - "8761:8761"
+    environment:
+      - SPRING_APPLICATION_NAME=eureka-server
+      - SERVER_PORT=8761
+      - EUREKA_CLIENT_REGISTER-WITH-EUREKA=false
+      - EUREKA_CLIENT_FETCH-REGISTRY=false
+      - JAVA_OPTS=-Xms512m -Xmx512m
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  api-gateway:
+    image: openjdk:17-jdk-slim
+    container_name: api-gateway
+    hostname: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_APPLICATION_NAME=api-gateway
+      - SERVER_PORT=8080
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_CLOUD_GATEWAY_DISCOVERY_LOCATOR_ENABLED=true
+      - JAVA_OPTS=-Xms512m -Xmx512m
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # --------------- Database Services ---------------
+  postgres-user:
+    image: postgres:15-alpine
+    container_name: postgres-user
+    hostname: postgres-user
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=user_db
+    volumes:
+      - postgres-user-data:/var/lib/postgresql/data
+      - ./init/user-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d user_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-tweet:
+    image: postgres:15-alpine
+    container_name: postgres-tweet
+    hostname: postgres-tweet
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=tweet_db
+    volumes:
+      - postgres-tweet-data:/var/lib/postgresql/data
+      - ./init/tweet-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tweet_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-feed:
+    image: postgres:15-alpine
+    container_name: postgres-feed
+    hostname: postgres-feed
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=feed_db
+    volumes:
+      - postgres-feed-data:/var/lib/postgresql/data
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d feed_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-notification:
+    image: postgres:15-alpine
+    container_name: postgres-notification
+    hostname: postgres-notification
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=notification_db
+    volumes:
+      - postgres-notification-data:/var/lib/postgresql/data
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    hostname: redis
+    command: redis-server --requirepass redis_pass123!
+    environment:
+      - REDIS_PASSWORD=redis_pass123!
+    volumes:
+      - redis-data:/data
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_pass123!", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    hostname: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin_pass123!
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # --------------- Application Services ---------------
+  user-service:
+    image: openjdk:17-jdk-slim
+    container_name: user-service
+    hostname: user-service
+    ports:
+      - "9100:9100"
+    environment:
+      - SPRING_APPLICATION_NAME=user-service
+      - SERVER_PORT=9100
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-user:5432/user_db?currentSchema=user_schema
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=root
+      - SPRING_JPA_HIBERNATE_DDL-AUTO=validate
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DEFAULT_SCHEMA=user_schema
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis_pass123!
+      - JWT_SECRET=your-256-bit-secret-key-1234567890abcdef
+      - JWT_EXPIRATION_MS=86400000
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=admin_pass123!
+      - JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ./user-service/target:/app
+    working_dir: /app
+    command: java -jar user-service-*.jar
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres-user:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  tweet-service:
+    image: openjdk:17-jdk-slim
+    container_name: tweet-service
+    hostname: tweet-service
+    ports:
+      - "9200:9200"
+    environment:
+      - SPRING_APPLICATION_NAME=tweet-service
+      - SERVER_PORT=9200
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-tweet:5432/tweet_db?currentSchema=tweet_schema
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=root
+      - SPRING_JPA_HIBERNATE_DDL-AUTO=validate
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DEFAULT_SCHEMA=tweet_schema
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis_pass123!
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=admin_pass123!
+      - JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ./tweet-service/target:/app
+    working_dir: /app
+    command: java -jar tweet-service-*.jar
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres-tweet:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  feed-service:
+    image: openjdk:17-jdk-slim
+    container_name: feed-service
+    hostname: feed-service
+    ports:
+      - "9300:9300"
+    environment:
+      - SPRING_APPLICATION_NAME=feed-service
+      - SERVER_PORT=9300
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-feed:5432/feed_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=root
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=redis_pass123!
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=admin_pass123!
+      - JAVA_OPTS=-Xms1g -Xmx1g
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres-feed:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9300/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  notification-service:
+    image: openjdk:17-jdk-slim
+    container_name: notification-service
+    hostname: notification-service
+    ports:
+      - "9400:9400"
+    environment:
+      - SPRING_APPLICATION_NAME=notification-service
+      - SERVER_PORT=9400
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-notification:5432/notification_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=root
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=admin_pass123!
+      - JAVA_OPTS=-Xms512m -Xmx512m
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres-notification:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9400/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  media-service:
+    image: openjdk:17-jdk-slim
+    container_name: media-service
+    hostname: media-service
+    ports:
+      - "9500:9500"
+    environment:
+      - SPRING_APPLICATION_NAME=media-service
+      - SERVER_PORT=9500
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=admin_pass123!
+      - AWS_ACCESS_KEY_ID=your_access_key
+      - AWS_SECRET_ACCESS_KEY=your_secret_key
+      - AWS_REGION=us-east-1
+      - AWS_S3_BUCKET_NAME=your-bucket-name
+      - JAVA_OPTS=-Xms512m -Xmx512m
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9500/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  search-service:
+    image: openjdk:17-jdk-slim
+    container_name: search-service
+    hostname: search-service
+    ports:
+      - "9600:9600"
+    environment:
+      - SPRING_APPLICATION_NAME=search-service
+      - SERVER_PORT=9600
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
+      - JAVA_OPTS=-Xms1g -Xmx1g
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9600/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.7.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - twitter-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+
+# --------------- Volumes ---------------
+volumes:
+  postgres-user-data:
+  postgres-tweet-data:
+  postgres-feed-data:
+  postgres-notification-data:
+  redis-data:
+  rabbitmq-data:
+  elasticsearch-data:
+
+# --------------- Networks ---------------
+networks:
+  twitter-net:
+    driver: bridge
