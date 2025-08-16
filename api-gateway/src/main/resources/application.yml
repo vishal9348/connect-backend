@@ -1,0 +1,62 @@
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: users-service
+          uri: http://localhost:5001
+          predicates:
+            - Path=/api/v1/user/**
+          filters:
+            - StripPrefix=3
+
+        - id: saloon-service
+          uri: http://localhost:5002
+          predicates:
+            - Path=/api/v1/salon/**
+          filters:
+            - StripPrefix=3
+
+        - id: category-service
+          uri: http://localhost:5003
+          predicates:
+            - Path=/api/v1/category/**
+          filters:
+            - StripPrefix=3
+
+        - id: service-offering-service
+          uri: http://localhost:5004
+          predicates:
+            - Path=/api/v1/service-offering/**
+          filters:
+            - StripPrefix=3
+
+        - id: booking-service
+          uri: http://localhost:5005
+          predicates:
+            - Path=/api/v1/bookings/**
+          filters:
+            - StripPrefix=3
+
+        - id: payment-service
+          uri: http://localhost:5006
+          predicates:
+            - Path=/api/payments/**
+          filters:
+            - StripPrefix=2
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: Users Service
+        url: /api/v1/user/v3/api-docs
+      - name: Saloon Service
+        url: /api/v1/salon/v3/api-docs
+      - name: Category Service
+        url: /api/v1/category/v3/api-docs
+      - name: Service Offering Service
+        url: /api/v1/service-offering/v3/api-docs
+      - name: Booking Service
+        url: /api/v1/bookings/v3/api-docs
+      - name: Payment Service
+        url: /api/payments/v3/api-docs
