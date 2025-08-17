@@ -19,6 +19,7 @@ import org.springframework.security.web.authentication.www.BasicAuthenticationFi
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public class JwtFilter extends BasicAuthenticationFilter {
 
@@ -64,34 +65,46 @@ public class JwtFilter extends BasicAuthenticationFilter {
             throws IOException, ServletException {
 
         String path = request.getRequestURI();
-        System.out.println("Request URI in JwtFilter: " + request.getRequestURI());
+        System.out.println("Request URI in JwtFilter: " + path);
 
-
-        // Skip JWT check for swagger and OpenAPI endpoints
+        // Skip JWT check for Swagger/OpenAPI
         if (path.contains("/v3/api-docs") || path.contains("/swagger-ui")) {
-            System.out.println("-------------------skipping---------------");
+            System.out.println("---- Skipping Swagger Security ----");
             chain.doFilter(request, response);
             return;
         }
-
 
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
 
         if (header != null && header.startsWith("Bearer ")) {
             JwtUtils utils = factory.getBean(JwtUtils.class);
 
-            String token = header.substring(7);
-            token = utils.validateToken(token);
-            JsonParser parser = JsonParserFactory.getJsonParser();
-            Map<String, Object> m = parser.parseMap(token);
-            String user = (String) m.get(JwtUtils.USER_CLAIM);
-            List<String> role = (List<String>) m.get(JwtUtils.ROLE_CLAIM);
+            try {
+                String token = header.substring(7);
+                token = utils.validateToken(token);
 
-            Authentication auth = new UsernamePasswordAuthenticationToken(user, null, AuthorityUtils.createAuthorityList(role));
+                JsonParser parser = JsonParserFactory.getJsonParser();
+                Map<String, Object> claims = parser.parseMap(token);
 
-            SecurityContext context = SecurityContextHolder.getContext();
-            context.setAuthentication(auth);
+                String userIdStr = (String) claims.get(JwtUtils.USERID_CLAIM);
+                List<String> roles = (List<String>) claims.get(JwtUtils.ROLE_CLAIM);
+
+                if (userIdStr != null) {
+                    UUID userId = UUID.fromString(userIdStr);
+                    System.out.println("--------------------- "+userId+" ----------");
+                    Authentication auth = new UsernamePasswordAuthenticationToken(
+                            userId.toString(), // <- set userId as principal
+                            null,
+                            AuthorityUtils.createAuthorityList(roles.toArray(new String[0]))
+                    );
+
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
+            } catch (Exception e) {
+                System.err.println("JWT validation failed: " + e.getMessage());
+            }
         }
+
         chain.doFilter(request, response);
     }
 

@@ -2,119 +2,73 @@ package com.vishal.user_service.model;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "user-tbl")
+@Table(name = "user_tbl")
+@Data
 public class Users {
-
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID userId;
+    private UUID id;
 
-    @NotBlank(message = "Name is required")
-    private String fullName;
+    @Column(unique = true, nullable = false)
+    private String username; // @handle
 
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email should be valid")
+    @Column(unique = true, nullable = false)
+    @Email
     private String email;
 
-    @NotBlank(message = "Phone is required")
-    private String phone;
-
-    @ElementCollection(fetch = FetchType.EAGER)
-    private List<String> role;
-
-    @NotBlank(message = "Password is required")
+    @Column(nullable = false)
     private String password;
 
+    private String fullName;
+    private String phone;
+    private String bio;
+    private String profileImageUrl;
+    private boolean verified = false;
+    private boolean active = true;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    private Set<String> role = Set.of("ROLE_USER");
+
+    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private long totalFollowers = 0;
+
+    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private long totalFollowing = 0;
+
+    @ElementCollection
+    @CollectionTable(name = "user_following", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "following_id")
+    private Set<UUID> followingIds = new HashSet<>();
+
+    @ElementCollection
+    @CollectionTable(name = "user_follower", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "follower_id")
+    private Set<UUID> followerIds = new HashSet<>();
+
     @CreationTimestamp
-    private LocalDateTime createAt;
+    private LocalDateTime createdAt;
 
     @UpdateTimestamp
-    private LocalDateTime updateAt;
+    private LocalDateTime updatedAt;
 
-    public Users() {
+    // Helper methods
+    public void addFollowing(UUID userId) {
+        this.followingIds.add(userId);
+        this.totalFollowing = this.followingIds.size();
     }
 
-    public Users(UUID userId, String fullName, String email, String phone, List<String> role, LocalDateTime createAt, LocalDateTime updateAt, String password) {
-        this.userId = userId;
-        this.fullName = fullName;
-        this.email = email;
-        this.phone = phone;
-        this.role = role;
-        this.password = password;
-        this.createAt = createAt;
-        this.updateAt = updateAt;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public UUID getUserId() {
-        return userId;
-    }
-
-    public void setUserId(UUID userId) {
-        this.userId = userId;
-    }
-
-    public String getFullName() {
-        return fullName;
-    }
-
-    public void setFullName(String fullName) {
-        this.fullName = fullName;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public String getPhone() {
-        return phone;
-    }
-
-    public void setPhone(String phone) {
-        this.phone = phone;
-    }
-
-    public List<String> getRole() {
-        return role;
-    }
-
-    public void setRole(List<String> role) {
-        this.role = role;
-    }
-
-    public LocalDateTime getCreateAt() {
-        return createAt;
-    }
-
-    public void setCreateAt(LocalDateTime createAt) {
-        this.createAt = createAt;
-    }
-
-    public LocalDateTime getUpdateAt() {
-        return updateAt;
-    }
-
-    public void setUpdateAt(LocalDateTime updateAt) {
-        this.updateAt = updateAt;
+    public void removeFollowing(UUID userId) {
+        this.followingIds.remove(userId);
+        this.totalFollowing = this.followingIds.size();
     }
 }

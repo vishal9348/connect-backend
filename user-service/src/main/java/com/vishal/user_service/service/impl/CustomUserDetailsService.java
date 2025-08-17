@@ -1,6 +1,6 @@
 package com.vishal.user_service.service.impl;
 
-import com.vishal.user_service.exception.UserNotFountException;
+import com.vishal.user_service.exception.UserNotFoundException;
 import com.vishal.user_service.model.Users;
 import com.vishal.user_service.service.IUserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +12,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class CustomUserDetailsService implements UserDetailsService {
@@ -23,13 +24,13 @@ public class CustomUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         try {
             Users users =userService.findUserByEmail(username);
-            List<String> role = users.getRole();
+            Set<String> role = users.getRole();
             return new User(users.getEmail(), users.getPassword(),
                     AuthorityUtils.createAuthorityList(users.getRole()));
         }
-        catch (UserNotFountException e){
+        catch (UserNotFoundException e){
             e.printStackTrace();
-            throw new UserNotFountException("User not found with this Email - "+username);
+            throw new UserNotFoundException("User not found with this Email - "+username);
         }
     }
 }

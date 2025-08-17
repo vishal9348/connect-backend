@@ -47,10 +47,9 @@ public class SecurityConfig {
                                         "/api/v1/user/swagger-ui/**")
                                 .permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/v1/user").hasAnyRole("ADMIN","ANONYMOUS")
-                                .anyRequest().permitAll())
+                                .anyRequest().authenticated())
                 .userDetailsService(userDetailsService)
                 .addFilterBefore(new JwtFilter(manager, factory), UsernamePasswordAuthenticationFilter.class)
-//                .addFilter(new JwtFilter(manager, WebApplicationContextUtils.getWebApplicationContext(context)))
                 .httpBasic(Customizer.withDefaults())
                 .build();
     }
